@@ -205,3 +205,24 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# REfrag specific
+# Vector database
+chroma_db/
+.chroma/
+
+# Model cache (optional - comment out if you want to cache models in repo)
+models/
+checkpoints/
+*.pt
+*.pth
+*.bin
+*.safetensors
+
+# Data files
+data/documents/*.txt
+data/documents/*.pdf
+data/cache/
+*.db
+*.db-shm
+*.db-wal

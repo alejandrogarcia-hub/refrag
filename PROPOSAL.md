@@ -58,33 +58,36 @@ REfrag addresses these issues through a three-phase approach:
 │     └─ Chunk Scorer                                          │
 │                                                               │
 │  5. GENERATION LAYER                                         │
-│     ├─ LLM Interface (OpenAI API / Anthropic / HuggingFace)│
-│     ├─ Hybrid Input Constructor                             │
-│     └─ Response Handler                                      │
+│     ├─ Local LLM (TinyLlama/Phi-2 via HuggingFace)         │
+│     ├─ Hybrid Input Constructor (embedding manipulation)    │
+│     ├─ Custom Forward Pass Handler                          │
+│     └─ Response Generator                                    │
 │                                                               │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Technology Stack
+### Technology Stack (UPDATED)
 
 - **Python Version**: 3.10+
 - **Package Manager**: `uv`
 - **Core Libraries**:
-  - `transformers` - For encoder models (RoBERTa) and tokenizers
-  - `sentence-transformers` - For document embeddings
-  - `chromadb` - Vector database for document retrieval
-  - `openai` - LLM API (primary choice)
-  - `anthropic` - Alternative LLM API
-  - `torch` - For neural network components
+  - `torch` - PyTorch for neural network components and model inference
+  - `transformers` - HuggingFace models (RoBERTa encoder, TinyLlama/Phi-2 decoder)
+  - `sentence-transformers` - For document embeddings (retrieval)
+  - `chromadb` - Vector database for document storage and retrieval
+  - `anthropic` - Optional: For baseline RAG comparison only
   - `numpy` - Numerical operations
-  - `tiktoken` - Token counting for metrics
+  - `scikit-learn` - For TF-IDF and similarity computations
+  - `datasets` - HuggingFace datasets library (for SQuAD)
+  - `accelerate` - For optimized model loading and inference
 
 - **Development Tools**:
   - `jupyter` - For demonstration notebook
-  - `matplotlib` / `seaborn` - Visualization
-  - `python-dotenv` - Environment management
+  - `matplotlib` / `seaborn` - Visualization and plotting
+  - `python-dotenv` - Environment variable management
   - `pytest` - Testing framework
   - `black` / `ruff` - Code formatting and linting
+  - `tqdm` - Progress bars for long-running operations
 
 ## Implementation Strategy
 
@@ -187,41 +190,138 @@ REfrag addresses these issues through a three-phase approach:
 - Well-commented codebase
 - Usage examples
 
-## Simplified Implementation Decisions
+## Implementation Approach (CORRECTED)
 
-To focus on the core methodology while avoiding complexity:
+### Critical Design Decision: Local Models vs API
 
-### 1. Pre-trained Models Only
-- **Encoder**: Use pre-trained `roberta-base` from HuggingFace
-- **Embeddings**: Use pre-trained `all-MiniLM-L6-v2` or `bge-small-en-v1.5`
-- **LLM**: Use API-based models (OpenAI GPT-4, Claude, or HuggingFace Inference)
-- **No training**: Skip continual pre-training (CPT) phase from paper
+**The paper's REfrag algorithm requires direct manipulation of embeddings at the decoder level**, which is impossible with API-based LLMs (OpenAI, Anthropic). These APIs only accept text prompts, not embedding injections.
 
-### 2. Heuristic Selection vs Full RL
-- **Start with heuristics**: Implement multiple selection strategies
-  - Perplexity-based (simulate importance)
-  - TF-IDF scoring
-  - Query-chunk similarity
-  - Hybrid scoring
-- **Optional RL**: Can be added later if needed
-- **Configurable**: Easy to switch between strategies
+**Therefore, we must use local HuggingFace models** where we have full access to:
+- The model's embedding layer
+- The ability to construct hybrid inputs (compressed embeddings + raw tokens)
+- Direct control over the forward pass
 
-### 3. Simplified Projector
-- **Linear projection**: Simple learnable or fixed linear layer
-- **Dimension matching**: Project encoder embeddings to match LLM token dimension
-- **Pre-computed**: Can use fixed random projection initially
-- **Extensible**: Architecture allows for more complex projectors
+### Corrected Implementation Decisions
 
-### 4. API-First LLM Integration
-- **Benefit**: No need to manage model weights or GPU memory
-- **Trade-off**: Can't directly manipulate token embeddings
-- **Solution**: Use prompt-based approach where compressed chunks are represented as special tokens or summarized text
-- **Fallback**: For full implementation, support HuggingFace models with direct embedding manipulation
+### 1. Local LLM Decoder (Required for Correctness)
+- **Decoder Model**: Use local HuggingFace model with embedding access
+  - **Primary choice**: `TinyLlama/TinyLlama-1.1B-Chat-v1.0` (1.1B params, efficient)
+  - **Alternative**: `microsoft/phi-2` (2.7B params, higher quality)
+  - **Advanced**: `meta-llama/Llama-2-7b-chat-hf` (7B params, best quality)
+- **Rationale**: These are small enough to run on modest hardware but large enough to demonstrate REfrag benefits
+- **API Comparison**: Use Anthropic Claude API for baseline RAG comparison (not for REfrag itself)
 
-### 5. Focus on Demonstration
-- **Skip evaluation tasks**: No need for benchmark datasets from paper
-- **Custom demos**: Create clear examples showing benefits
-- **Metrics focus**: Token reduction, time savings, cost reduction
+### 2. Pre-trained Components (No Training)
+- **Chunk Encoder**: Use pre-trained `roberta-base` from HuggingFace (768-dim embeddings)
+- **Document Embeddings**: Use pre-trained `BAAI/bge-small-en-v1.5` for retrieval
+- **Projector**: Simple linear layer to map RoBERTa embeddings → LLM token space
+- **No CPT**: Skip continual pre-training phase from paper
+- **No Fine-tuning**: Use models as-is
+
+### 3. Heuristic Selection Policies (No RL Training)
+- **Implement multiple heuristic strategies**:
+  - **Query-similarity**: Cosine similarity between chunk and query embeddings
+  - **TF-IDF**: Statistical importance of chunk terms
+  - **Position**: Earlier chunks often more relevant
+  - **Hybrid**: Weighted combination of above
+- **Skip RL training**: Too complex for initial implementation
+- **Configurable**: Easy to switch strategies via config
+
+### 4. Hybrid Input Construction (Core Innovation)
+This is the **critical piece** that makes REfrag work:
+
+```python
+# For each retrieved passage:
+# 1. Chunk into 16-token segments
+# 2. Encode each chunk → RoBERTa embedding (768-dim)
+# 3. Project to LLM embedding space (e.g., 2048-dim for TinyLlama)
+# 4. Select top-k important chunks via policy
+# 5. Construct hybrid input:
+#    - Selected chunks: use ORIGINAL TOKENS → token_embeddings
+#    - Other chunks: use COMPRESSED EMBEDDINGS → projected_embeddings
+# 6. Feed hybrid sequence directly to LLM.forward()
+```
+
+**This is impossible with API-based LLMs** but straightforward with local models.
+
+### 5. Dataset and Evaluation
+- **Dataset**: SQuAD 2.0 (small subset for demo)
+  - ~500 question-answer pairs
+  - Multiple passages per question
+  - Ground truth answers for validation
+- **Metrics**:
+  - Token count (original vs compressed)
+  - TTFT (time to first token)
+  - Total latency
+  - Answer quality (exact match, F1 score vs ground truth)
+- **Comparison**: REfrag vs Standard RAG (both using same local LLM)
+
+### 6. Focus on Correctness
+- **Priority**: Implement the algorithm exactly as described in the paper
+- **No shortcuts**: Use real embedding manipulation, not prompt approximations
+- **Validation**: Verify that compressed chunks are truly represented as embeddings
+- **Demonstration**: Clear visualization showing hybrid input construction
+
+## Why Local Models Are Required
+
+### The Core REfrag Innovation
+
+REfrag's key innovation is **operating at the embedding level**, not the text level:
+
+1. **Standard RAG**: `query_text + retrieved_passages_text → LLM → answer`
+   - Input: All tokens from all passages (e.g., 5 passages × 500 tokens = 2,500 tokens)
+   - Problem: High TTFT due to processing all tokens
+
+2. **REfrag**: `query_tokens + [compressed_embeddings | selected_tokens] → LLM → answer`
+   - Input: Mixed sequence of embeddings and tokens
+   - Compressed chunks: Represented as single embeddings (16 tokens → 1 embedding)
+   - Selected chunks: Full tokens for important content
+   - Problem: **Requires direct embedding injection**
+
+### Why API LLMs Don't Work
+
+API-based LLMs (OpenAI, Anthropic) provide:
+```python
+def api_call(text: str) -> str:
+    # You can only provide text, not embeddings
+    return generated_text
+```
+
+REfrag requires:
+```python
+def refrag_forward(
+    input_embeddings: Tensor,  # Mix of token embeddings + compressed embeddings
+    attention_mask: Tensor
+) -> Tensor:
+    # Direct access to model internals
+    return llm.forward(inputs_embeds=input_embeddings, attention_mask=attention_mask)
+```
+
+### Implementation with Local Models
+
+With HuggingFace Transformers:
+```python
+# 1. Get token embeddings for important chunks
+token_ids = tokenizer(important_chunks)
+token_embeds = model.get_input_embeddings()(token_ids)  # Shape: [batch, seq, dim]
+
+# 2. Get compressed embeddings for other chunks
+compressed_embeds = projector(encoder_output)  # Shape: [batch, 1, dim] per chunk
+
+# 3. Concatenate into hybrid sequence
+hybrid_embeds = torch.cat([
+    query_embeds,           # Query tokens
+    compressed_chunk_1,     # Compressed chunk (1 embedding)
+    important_chunk_tokens, # Expanded chunk (N embeddings)
+    compressed_chunk_2,     # Compressed chunk (1 embedding)
+    ...
+], dim=1)
+
+# 4. Direct forward pass
+outputs = model(inputs_embeds=hybrid_embeds, attention_mask=mask)
+```
+
+**This is the TRUE REfrag algorithm** and cannot be approximated with text-only APIs.
 
 ## Project Structure
 
@@ -378,7 +478,104 @@ class HeuristicPolicy:
         """
 ```
 
-### 5. REfrag Pipeline
+### 5. Hybrid Input Constructor and Generator
+
+```python
+class HybridInputConstructor:
+    """
+    Constructs hybrid input sequence mixing compressed embeddings and tokens.
+    This is the core of REfrag.
+    """
+    def __init__(self, llm_model, llm_tokenizer, projector):
+        self.model = llm_model
+        self.tokenizer = llm_tokenizer
+        self.projector = projector
+        self.embed_layer = llm_model.get_input_embeddings()
+
+    def construct(
+        self,
+        query: str,
+        chunks: List[str],
+        chunk_embeddings: np.ndarray,
+        selected_indices: List[int]
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Construct hybrid input from query, chunks, and selection.
+
+        Args:
+            query: User question
+            chunks: List of text chunks from retrieved documents
+            chunk_embeddings: Compressed embeddings from encoder [n_chunks, encoder_dim]
+            selected_indices: Indices of chunks to expand (use full tokens)
+
+        Returns:
+            (hybrid_embeddings, attention_mask)
+        """
+        # Tokenize query
+        query_ids = self.tokenizer(query, return_tensors='pt').input_ids
+        query_embeds = self.embed_layer(query_ids)  # [1, query_len, hidden_dim]
+
+        # Process each chunk
+        chunk_embeds_list = []
+        for i, chunk in enumerate(chunks):
+            if i in selected_indices:
+                # EXPAND: Use full token embeddings
+                chunk_ids = self.tokenizer(chunk, return_tensors='pt').input_ids
+                chunk_embeds = self.embed_layer(chunk_ids)  # [1, chunk_len, hidden_dim]
+            else:
+                # COMPRESS: Use single projected embedding
+                compressed = torch.tensor(chunk_embeddings[i])  # [encoder_dim]
+                chunk_embeds = self.projector(compressed)  # [hidden_dim]
+                chunk_embeds = chunk_embeds.unsqueeze(0).unsqueeze(0)  # [1, 1, hidden_dim]
+
+            chunk_embeds_list.append(chunk_embeds)
+
+        # Concatenate all embeddings
+        hybrid_embeds = torch.cat([query_embeds] + chunk_embeds_list, dim=1)
+
+        # Create attention mask
+        attention_mask = torch.ones(hybrid_embeds.shape[:2])
+
+        return hybrid_embeds, attention_mask
+
+class REfragGenerator:
+    """
+    Generate answers using REfrag with hybrid input.
+    """
+    def __init__(self, model, tokenizer, hybrid_constructor):
+        self.model = model
+        self.tokenizer = tokenizer
+        self.hybrid_constructor = hybrid_constructor
+
+    def generate(
+        self,
+        query: str,
+        chunks: List[str],
+        chunk_embeddings: np.ndarray,
+        selected_indices: List[int],
+        max_length: int = 100
+    ) -> str:
+        """
+        Generate answer using hybrid input.
+        """
+        # Construct hybrid input
+        hybrid_embeds, attention_mask = self.hybrid_constructor.construct(
+            query, chunks, chunk_embeddings, selected_indices
+        )
+
+        # Generate with direct embedding input
+        outputs = self.model.generate(
+            inputs_embeds=hybrid_embeds,
+            attention_mask=attention_mask,
+            max_length=max_length,
+            do_sample=False  # Greedy decoding
+        )
+
+        # Decode response
+        answer = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        return answer
+
+### 6. Complete REfrag Pipeline
 
 ```python
 class REfragPipeline:
@@ -390,7 +587,7 @@ class REfragPipeline:
         self.encoder = ChunkEncoder(config)
         self.projector = Projector(config)
         self.policy = Policy(config)
-        self.llm = LLMInterface(config)
+        self.generator = REfragGenerator(config)
 
     def query(self, question: str, top_k: int = 5) -> Dict:
         """
@@ -400,42 +597,116 @@ class REfragPipeline:
             {
                 'answer': Generated answer,
                 'metrics': {
-                    'tokens_saved': int,
+                    'original_tokens': int,
+                    'compressed_tokens': int,
                     'compression_ratio': float,
                     'ttft': float,
                     'total_time': float
+                },
+                'debug': {
+                    'retrieved_docs': int,
+                    'total_chunks': int,
+                    'selected_chunks': int
                 }
             }
         """
-        # 1. Retrieve relevant documents
-        # 2. Chunk and encode (COMPRESS)
-        # 3. Select important chunks (SENSE/SELECT)
-        # 4. Construct hybrid input (EXPAND)
-        # 5. Generate answer with LLM
-        # 6. Collect metrics
+        start_time = time.time()
+
+        # 1. RETRIEVE relevant documents
+        documents = self.retriever.retrieve(question, top_k=top_k)
+
+        # 2. COMPRESS: Chunk and encode
+        all_chunks = []
+        all_embeddings = []
+        for doc in documents:
+            chunks = self.encoder.chunk_text(doc)
+            embeddings = self.encoder.encode(chunks)
+            all_chunks.extend(chunks)
+            all_embeddings.append(embeddings)
+
+        chunk_embeddings = np.concatenate(all_embeddings, axis=0)
+
+        # 3. SENSE/SELECT: Identify important chunks
+        selected_indices = self.policy.select(
+            all_chunks, question, chunk_embeddings
+        )
+
+        # 4. EXPAND & GENERATE: Create hybrid input and generate
+        ttft_start = time.time()
+        answer = self.generator.generate(
+            question, all_chunks, chunk_embeddings, selected_indices
+        )
+        ttft = time.time() - ttft_start
+
+        total_time = time.time() - start_time
+
+        # 5. METRICS: Calculate token savings
+        original_tokens = sum(len(self.encoder.tokenize(c)) for c in all_chunks)
+        # Each compressed chunk = 1 token equivalent, selected chunks = full tokens
+        compressed_tokens = (
+            len(all_chunks) - len(selected_indices) +  # Compressed chunks
+            sum(len(self.encoder.tokenize(all_chunks[i])) for i in selected_indices)  # Expanded
+        )
+
+        return {
+            'answer': answer,
+            'metrics': {
+                'original_tokens': original_tokens,
+                'compressed_tokens': compressed_tokens,
+                'compression_ratio': original_tokens / compressed_tokens,
+                'ttft': ttft,
+                'total_time': total_time
+            },
+            'debug': {
+                'retrieved_docs': len(documents),
+                'total_chunks': len(all_chunks),
+                'selected_chunks': len(selected_indices)
+            }
+        }
 ```
 
-## API Key Requirements
+## Configuration and Requirements
 
-The implementation will require API keys for:
+### API Keys
+The implementation requires minimal API keys:
 
-- **OpenAI API** (primary LLM choice): For GPT-4 or GPT-3.5-turbo
-- **Anthropic API** (alternative): For Claude models
-- **HuggingFace** (optional): For inference API or model downloads
+- **HuggingFace Token** (optional): For downloading gated models (e.g., Llama-2)
+- **Anthropic API** (optional): Only for baseline RAG comparison, not for REfrag itself
 
 Environment variables in `.env`:
 ```bash
-# LLM API Keys
-OPENAI_API_KEY=your_openai_key_here
-ANTHROPIC_API_KEY=your_anthropic_key_here
-HUGGINGFACE_API_KEY=your_hf_key_here
+# Optional API Keys
+HUGGINGFACE_TOKEN=your_hf_token_here  # Only if using gated models
+ANTHROPIC_API_KEY=your_api_key_here   # Only for comparison baseline
 
-# Configuration
-DEFAULT_LLM_PROVIDER=openai
-DEFAULT_LLM_MODEL=gpt-3.5-turbo
-CHUNK_SIZE=16
-EXPANSION_FRACTION=0.25
+# Model Configuration
+DECODER_MODEL=TinyLlama/TinyLlama-1.1B-Chat-v1.0  # Local model
+ENCODER_MODEL=roberta-base
+EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+
+# REfrag Configuration
+CHUNK_SIZE=16                 # Tokens per chunk
+EXPANSION_FRACTION=0.25       # Fraction of chunks to expand
+SELECTION_STRATEGY=similarity # similarity, tfidf, position, hybrid
+TOP_K_DOCUMENTS=5            # Documents to retrieve
 ```
+
+### Hardware Requirements
+- **Minimum**: 8GB RAM, CPU-only (slow but functional)
+- **Recommended**: 16GB RAM, GPU with 6GB+ VRAM (CUDA/ROCm)
+  - TinyLlama (1.1B): ~2.5GB VRAM
+  - Phi-2 (2.7B): ~6GB VRAM
+- **Optimal**: 32GB RAM, GPU with 12GB+ VRAM
+  - Llama-2-7B: ~14GB VRAM (requires 4-bit quantization)
+
+### Model Downloads (Automatic)
+The following models will be automatically downloaded on first run:
+- **Decoder**: TinyLlama-1.1B (~2.2GB)
+- **Encoder**: RoBERTa-base (~500MB)
+- **Embedder**: bge-small-en-v1.5 (~130MB)
+- **Total**: ~3GB of models
+
+**Note**: Models are cached in `~/.cache/huggingface/` and only downloaded once.
 
 ## Success Criteria
 
@@ -562,8 +833,60 @@ This implementation plan provides a pragmatic approach to building REfrag from s
 
 The implementation will serve as both a reference implementation and a practical tool for improving RAG system efficiency in real-world applications.
 
+## Summary of Corrected Approach
+
+### Key Changes from Initial Proposal
+
+1. **LLM Architecture**:
+   - ❌ **Rejected**: API-based LLMs (OpenAI, Anthropic) for REfrag
+   - ✅ **Adopted**: Local HuggingFace models (TinyLlama, Phi-2) with embedding access
+
+2. **Core Implementation**:
+   - ❌ **Rejected**: Text-based prompt engineering to simulate compression
+   - ✅ **Adopted**: True embedding manipulation with hybrid input sequences
+
+3. **REfrag Algorithm**:
+   - ✅ Correctly implements compress → sense/select → expand
+   - ✅ Chunking: Fixed-size 16-token chunks
+   - ✅ Compression: RoBERTa encoder → projected embeddings
+   - ✅ Selection: Heuristic policies (similarity, TF-IDF, position)
+   - ✅ Expansion: Hybrid input (compressed embeddings + full tokens)
+   - ✅ Generation: Direct forward pass with `inputs_embeds`
+
+4. **Dataset & Evaluation**:
+   - ✅ SQuAD 2.0 subset for demonstration
+   - ✅ Quantitative metrics (token reduction, TTFT, latency)
+   - ✅ Qualitative comparison (answer quality vs standard RAG)
+
+5. **API Usage**:
+   - ✅ Anthropic Claude: Optional baseline comparison only
+   - ✅ HuggingFace: Model downloads (no API calls needed)
+
+### What Makes This Implementation Correct
+
+This implementation follows the paper's methodology by:
+
+1. **Operating at the embedding level**: Directly manipulating the LLM's input representations
+2. **Hybrid input sequences**: Mixing compressed and uncompressed chunks in a single forward pass
+3. **Projection layer**: Mapping encoder embeddings to decoder token space
+4. **Policy-based selection**: Intelligently choosing which chunks to expand
+5. **No approximations**: True compression via embeddings, not text summarization
+
+### Expected Results
+
+Based on the paper's findings, we expect to demonstrate:
+
+- **4-16× token reduction** (depending on expansion fraction)
+- **2-5× TTFT improvement** (with local models)
+- **Comparable or better answer quality** (due to better context utilization)
+- **Clear visualization** of which chunks are compressed vs expanded
+
+### Timeline and Effort
+
 ---
 
-**Estimated Timeline**: 11 days
-**Lines of Code**: ~2,000-3,000 (excluding tests and examples)
-**Test Coverage Target**: >80%
+**Estimated Timeline**: 10-12 days
+**Lines of Code**: ~2,500-3,500 (excluding tests and examples)
+**Test Coverage Target**: >75%
+**Model Download Size**: ~3GB
+**Hardware Requirements**: 8GB+ RAM, GPU recommended but not required

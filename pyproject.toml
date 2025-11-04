@@ -1,0 +1,55 @@
+[project]
+name = "refrag"
+version = "0.1.0"
+description = "REfrag: Efficient RAG with Compress-Sense/Select-Expand methodology"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    {name = "REfrag Implementation"}
+]
+license = {text = "MIT"}
+
+dependencies = [
+    # Core ML libraries
+    "torch>=2.0.0",
+    "transformers>=4.35.0",
+    "sentence-transformers>=2.2.0",
+    "accelerate>=0.24.0",
+
+    # Vector database and retrieval
+    "chromadb>=0.4.0",
+
+    # Data processing
+    "numpy>=1.24.0",
+    "scikit-learn>=1.3.0",
+    "datasets>=2.14.0",
+
+    # Utilities
+    "python-dotenv>=1.0.0",
+    "tqdm>=4.66.0",
+
+    # Optional API clients
+    "anthropic>=0.8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "jupyter>=1.0.0",
+    "matplotlib>=3.7.0",
+    "seaborn>=0.12.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.black]
+line-length = 100
+target-version = ['py310']
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"

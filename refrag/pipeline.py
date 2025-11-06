@@ -204,14 +204,12 @@ class REfragPipeline:
                 query=question,
                 chunks=all_chunks,
                 chunk_embeddings=chunk_embeddings,
-                query_embedding=query_embedding
+                query_embedding=query_embedding,
             )
 
             # Get dynamic expansion fraction based on complexity
             dynamic_fraction = self.complexity_estimator.get_dynamic_expansion_fraction(
-                complexity=complexity_score,
-                min_fraction=0.1,
-                max_fraction=0.5
+                complexity=complexity_score, min_fraction=0.1, max_fraction=0.5
             )
 
             logger.info(
@@ -225,7 +223,7 @@ class REfragPipeline:
                 query=question,
                 chunk_embeddings=chunk_embeddings,
                 query_embedding=query_embedding,
-                dynamic_fraction=dynamic_fraction
+                dynamic_fraction=dynamic_fraction,
             )
         else:
             # Use fixed expansion fraction from config
@@ -238,7 +236,7 @@ class REfragPipeline:
                 chunks=all_chunks,
                 query=question,
                 chunk_embeddings=chunk_embeddings,
-                query_embedding=query_embedding
+                query_embedding=query_embedding,
             )
 
         self.metrics.end("selection_time")

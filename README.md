@@ -44,6 +44,7 @@ Document → [Chunk₁, Chunk₂, ..., ChunkN] → [Emb₁, Emb₂, ..., EmbN]
 ### 2. **SENSE/SELECT**: Identify Important Chunks
 
 Use heuristic policies to select the most important chunks for expansion:
+
 - **Similarity**: Cosine similarity to query
 - **TF-IDF**: Statistical importance
 - **Position**: Earlier chunks preferred
@@ -52,6 +53,7 @@ Use heuristic policies to select the most important chunks for expansion:
 ### 3. **EXPAND**: Construct Hybrid Input
 
 Create a hybrid input sequence mixing:
+
 - **Compressed chunks**: Single projected embeddings (16 tokens → 1 embedding)
 - **Expanded chunks**: Full token embeddings for important content
 
@@ -94,6 +96,7 @@ pip install -e .
 ### Dependencies
 
 REfrag will automatically download the following models on first run (~3GB total):
+
 - **Decoder**: TinyLlama-1.1B (~2.2GB)
 - **Encoder**: RoBERTa-base (~500MB)
 - **Embedder**: bge-small-en-v1.5 (~130MB)
@@ -403,22 +406,10 @@ This implementation prioritizes **simplicity and usability** over full paper rep
 
 Despite these simplifications, the **core algorithm** (compress-sense/select-expand) is implemented correctly with embedding-level manipulation.
 
-## 🧪 Running Tests
-
-```bash
-# Run all tests
-pytest tests/
-
-# Run with coverage
-pytest --cov=refrag tests/
-
-# Run specific test
-pytest tests/test_pipeline.py
-```
-
 ## 📓 Jupyter Notebook
 
 See `notebooks/demo.ipynb` for a comprehensive demonstration including:
+
 - Setup and configuration
 - Document ingestion
 - Query processing
@@ -493,6 +484,7 @@ If you use REfrag in your research, please cite:
 ## 📧 Contact
 
 For questions, issues, or suggestions:
+
 - Open an issue on [GitHub](https://github.com/alejandrogarcia-hub/refrag/issues)
 - See [PROPOSAL.md](PROPOSAL.md) for implementation details
 

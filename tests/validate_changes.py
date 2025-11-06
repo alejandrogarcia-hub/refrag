@@ -10,11 +10,12 @@ print("=" * 60)
 print("REfrag Changes Validation")
 print("=" * 60)
 
+
 def check_file(filepath, checks):
     """Check a file for specific code patterns."""
     print(f"\nChecking {filepath}...")
     try:
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             content = f.read()
 
         # Parse to check syntax
@@ -34,16 +35,17 @@ def check_file(filepath, checks):
         print(f"  ✗ Error: {e}")
         return False
 
+
 # Test 1: HybridInputConstructor positional encodings
 print("\n[1/4] Validating hybrid_input.py (positional encodings)...")
 success = check_file(
-    '/home/user/refrag/refrag/generation/hybrid_input.py',
+    "refrag/generation/hybrid_input.py",
     {
-        'position_embedding declaration': 'self.position_embedding = nn.Embedding',
-        'position_embedding initialization': 'nn.init.normal_',
-        'position_id usage': 'position_id = torch.tensor',
-        'position_emb usage': 'position_emb = self.position_embedding',
-    }
+        "position_embedding declaration": "self.position_embedding = nn.Embedding",
+        "position_embedding initialization": "nn.init.normal_",
+        "position_id usage": "position_id = torch.tensor",
+        "position_emb usage": "position_emb = self.position_embedding",
+    },
 )
 
 if not success:
@@ -52,12 +54,12 @@ if not success:
 # Test 2: QueryComplexityEstimator
 print("\n[2/4] Validating complexity.py (query complexity estimator)...")
 success = check_file(
-    '/home/user/refrag/refrag/selection/complexity.py',
+    "refrag/selection/complexity.py",
     {
-        'QueryComplexityEstimator class': 'class QueryComplexityEstimator',
-        'estimate_complexity method': 'def estimate_complexity',
-        'get_dynamic_expansion_fraction method': 'def get_dynamic_expansion_fraction',
-    }
+        "QueryComplexityEstimator class": "class QueryComplexityEstimator",
+        "estimate_complexity method": "def estimate_complexity",
+        "get_dynamic_expansion_fraction method": "def get_dynamic_expansion_fraction",
+    },
 )
 
 if not success:
@@ -66,11 +68,11 @@ if not success:
 # Test 3: SelectionPolicy with dynamic fraction support
 print("\n[3/4] Validating base.py (dynamic selection)...")
 success = check_file(
-    '/home/user/refrag/refrag/selection/base.py',
+    "refrag/selection/base.py",
     {
-        'select_with_dynamic_fraction method': 'def select_with_dynamic_fraction',
-        '_get_top_k with optional fraction': 'expansion_fraction: float | None = None',
-    }
+        "select_with_dynamic_fraction method": "def select_with_dynamic_fraction",
+        "_get_top_k with optional fraction": "expansion_fraction: float | None = None",
+    },
 )
 
 if not success:
@@ -79,11 +81,11 @@ if not success:
 # Test 4: Config with use_dynamic_expansion
 print("\n[4/4] Validating config.py (dynamic expansion config)...")
 success = check_file(
-    '/home/user/refrag/refrag/config.py',
+    "refrag/config.py",
     {
-        'use_dynamic_expansion field': 'use_dynamic_expansion: bool',
-        'USE_DYNAMIC_EXPANSION env var': 'USE_DYNAMIC_EXPANSION',
-    }
+        "use_dynamic_expansion field": "use_dynamic_expansion: bool",
+        "USE_DYNAMIC_EXPANSION env var": "USE_DYNAMIC_EXPANSION",
+    },
 )
 
 if not success:
@@ -92,14 +94,14 @@ if not success:
 # Test 5: Pipeline integration
 print("\n[5/5] Validating pipeline.py (integration)...")
 success = check_file(
-    '/home/user/refrag/refrag/pipeline.py',
+    "refrag/pipeline.py",
     {
-        'QueryComplexityEstimator import': 'QueryComplexityEstimator',
-        'complexity_estimator initialization': 'self.complexity_estimator = QueryComplexityEstimator',
-        'Dynamic expansion check': 'if self.config.use_dynamic_expansion:',
-        'complexity estimation': 'complexity_score = self.complexity_estimator.estimate_complexity',
-        'select_with_dynamic_fraction call': 'select_with_dynamic_fraction',
-    }
+        "QueryComplexityEstimator import": "QueryComplexityEstimator",
+        "complexity_estimator initialization": "self.complexity_estimator = QueryComplexityEstimator",
+        "Dynamic expansion check": "if self.config.use_dynamic_expansion:",
+        "complexity estimation": "complexity_score = self.complexity_estimator.estimate_complexity",
+        "select_with_dynamic_fraction call": "select_with_dynamic_fraction",
+    },
 )
 
 if not success:

@@ -82,13 +82,15 @@ This document provides a comprehensive gap analysis between our REfrag implement
 The paper mentions that compressed chunk embeddings should maintain positional information to preserve document structure.
 
 **Current Implementation**:
+
 ```python
 # In hybrid_input.py line 117
 chunk_embeds = projected_emb.unsqueeze(0).unsqueeze(0)  # [1, 1, hidden_dim]
 # No positional encoding added
 ```
 
-**Impact**: 
+**Impact**:
+
 - Medium severity
 - Compressed chunks lose positional context
 - May affect quality for position-dependent queries
@@ -103,6 +105,7 @@ chunk_embeds = projected_emb.unsqueeze(0).unsqueeze(0)  # [1, 1, hidden_dim]
 The paper uses optimized attention patterns, particularly for compressed chunks, to improve efficiency.
 
 **Current Implementation**:
+
 ```python
 # In hybrid_input.py line 127
 attention_mask = torch.ones(hybrid_embeds.shape[:2], dtype=torch.long, device=self.device)
@@ -110,6 +113,7 @@ attention_mask = torch.ones(hybrid_embeds.shape[:2], dtype=torch.long, device=se
 ```
 
 **Impact**:
+
 - Low-Medium severity
 - Missing potential efficiency gains
 - May attend unnecessarily to some compressed chunks
@@ -124,12 +128,14 @@ attention_mask = torch.ones(hybrid_embeds.shape[:2], dtype=torch.long, device=se
 The paper's RL policy can adaptively decide how many chunks to expand based on query complexity and content.
 
 **Current Implementation**:
+
 ```python
 # In selection/base.py line 51
 k = max(1, int(n_chunks * self.expansion_fraction))  # Fixed fraction
 ```
 
 **Impact**:
+
 - Medium severity
 - All queries use same expansion fraction
 - Simple queries might benefit from less expansion
@@ -145,10 +151,12 @@ k = max(1, int(n_chunks * self.expansion_fraction))  # Fixed fraction
 Uses attention scores from decoder to inform which chunks are important (for policy training).
 
 **Current Implementation**:
+
 - No attention score extraction
 - Heuristic policies don't use decoder feedback
 
 **Impact**:
+
 - Low severity (given we use heuristics)
 - Could inform better heuristics
 
@@ -162,6 +170,7 @@ Uses attention scores from decoder to inform which chunks are important (for pol
 Supports batch inference for multiple queries simultaneously.
 
 **Current Implementation**:
+
 ```python
 # In pipeline.py - processes one query at a time
 def query(self, question: str, ...) -> Dict:
@@ -169,6 +178,7 @@ def query(self, question: str, ...) -> Dict:
 ```
 
 **Impact**:
+
 - Low severity for demo
 - Would improve throughput for production
 
@@ -182,10 +192,12 @@ def query(self, question: str, ...) -> Dict:
 Implements KV-cache optimizations for compressed chunks.
 
 **Current Implementation**:
+
 - Standard HuggingFace generation
 - No custom KV-cache handling
 
 **Impact**:
+
 - Medium severity
 - Missing memory optimization
 - Could improve TTFT further
@@ -203,11 +215,13 @@ Implements KV-cache optimizations for compressed chunks.
 **Implementation Plan**:
 
 1. **Add position embedding layer** in `HybridInputConstructor.__init__`
+
    ```python
    self.position_embedding = nn.Embedding(max_position_embeddings, hidden_dim)
    ```
 
 2. **Modify chunk processing** in `hybrid_input.py`:
+
    ```python
    else:  # COMPRESS
        encoder_emb = torch.from_numpy(chunk_embeddings[i]).float().to(self.device)
@@ -236,6 +250,7 @@ Implements KV-cache optimizations for compressed chunks.
 **Implementation Plan**:
 
 1. **Add query complexity estimator**:
+
    ```python
    class QueryComplexityEstimator:
        def estimate_complexity(self, query: str, chunks: List[str]) -> float:
@@ -247,6 +262,7 @@ Implements KV-cache optimizations for compressed chunks.
    ```
 
 2. **Modify selection policy** to accept dynamic fraction:
+
    ```python
    def select_dynamic(self, chunks, query, embeddings, complexity_score):
        # Adjust expansion fraction based on complexity
@@ -257,6 +273,7 @@ Implements KV-cache optimizations for compressed chunks.
    ```
 
 3. **Integrate into pipeline**:
+
    ```python
    # In pipeline.py, before selection
    complexity = self.complexity_estimator.estimate(question, all_chunks)
@@ -276,6 +293,7 @@ Implements KV-cache optimizations for compressed chunks.
 **Implementation Plan**:
 
 1. **Modify attention mask construction**:
+
    ```python
    def construct_optimized_attention_mask(
        self, 
@@ -288,6 +306,7 @@ Implements KV-cache optimizations for compressed chunks.
    ```
 
 2. **Apply during hybrid input**:
+
    ```python
    attention_mask = self.construct_optimized_attention_mask(
        query_len=query_embeds.shape[1],
@@ -308,6 +327,7 @@ Implements KV-cache optimizations for compressed chunks.
 **Implementation Plan**:
 
 1. **Add batch query method**:
+
    ```python
    def query_batch(
        self, 
@@ -338,6 +358,7 @@ Implements KV-cache optimizations for compressed chunks.
 **Implementation Plan**:
 
 1. **Create training script** `train_projector.py`:
+
    ```python
    class ProjectorTrainer:
        def train_reconstruction(self, corpus, num_epochs=1):
@@ -347,12 +368,14 @@ Implements KV-cache optimizations for compressed chunks.
    ```
 
 2. **Add reconstruction loss**:
+
    ```python
    def reconstruction_loss(original_embeds, projected_embeds):
        return F.mse_loss(projected_embeds, original_embeds)
    ```
 
 3. **Save trained projector**:
+
    ```python
    projector.save("checkpoints/projector_trained.pt")
    ```
@@ -370,21 +393,25 @@ Implements KV-cache optimizations for compressed chunks.
 These are aspects where we differ from the paper **by design**, per our constraints:
 
 ### ✅ No RL Policy Training
+
 - **Paper**: REINFORCE with PPL/BLEU rewards
 - **Us**: Heuristic policies
 - **Status**: ✅ Acceptable per constraints
 
 ### ✅ No Continual Pre-Training
+
 - **Paper**: 20B tokens CPT on SlimPajama
 - **Us**: Pre-trained models only
 - **Status**: ✅ Acceptable per constraints
 
 ### ✅ No Evaluation on Benchmark Tasks
+
 - **Paper**: Extensive evaluation on multiple datasets
 - **Us**: Demo notebook only
 - **Status**: ✅ Acceptable per constraints
 
 ### ✅ Simplified Metrics
+
 - **Paper**: Perplexity, exact match, F1, BLEU
 - **Us**: Token counts, TTFT, compression ratio
 - **Status**: ✅ Acceptable for demo
@@ -394,14 +421,17 @@ These are aspects where we differ from the paper **by design**, per our constrai
 ## Part 5: Recommendations
 
 ### Immediate (Next Session)
+
 1. ✅ **Implement Positional Encodings** (Proposal 1) - HIGH PRIORITY
 2. ✅ **Implement Dynamic Expansion** (Proposal 2) - MEDIUM PRIORITY
 
 ### Short-term (Next Week)
+
 3. ⚠️ **Optimize Attention Masks** (Proposal 3) - If time permits
 4. ⚠️ **Add Batch Processing** (Proposal 4) - If needed for production
 
 ### Long-term (Future)
+
 5. ⏸️ **Projector Training** (Proposal 5) - Optional enhancement
 6. ⏸️ **RL Policy** - If transitioning to full paper reproduction
 
@@ -410,6 +440,7 @@ These are aspects where we differ from the paper **by design**, per our constrai
 ## Part 6: Summary Assessment
 
 ### What We Got Right ✅
+
 - Core compress-sense/select-expand algorithm
 - Hybrid input construction with embedding manipulation
 - Local model integration (no API dependencies)
@@ -418,12 +449,14 @@ These are aspects where we differ from the paper **by design**, per our constrai
 - Working end-to-end pipeline
 
 ### What We Simplified (Intentionally) ⚠️
+
 - Heuristic selection instead of RL
 - Random projection instead of trained
 - No CPT phase
 - Demo-only evaluation
 
 ### What We Missed (Unintentionally) ❌
+
 - Positional encodings for compressed chunks
 - Attention mask optimization
 - Dynamic expansion fraction
@@ -431,6 +464,7 @@ These are aspects where we differ from the paper **by design**, per our constrai
 - Batch query processing
 
 ### Overall Alignment
+
 **Score: 8.5/10**
 
 - **Algorithm Correctness**: 10/10 ✅

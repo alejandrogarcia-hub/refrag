@@ -192,7 +192,8 @@ class REfragPipeline:
         self.metrics.start("selection_time")
 
         # Get query embedding for selection
-        query_embedding = self.doc_embedder.embed(question)
+        # IMPORTANT: Use the same encoder (RoBERTa) as chunks to match dimensions
+        query_embedding = self.encoder.encode_single(question)
 
         # Select chunks
         selected_indices = self.policy.select(

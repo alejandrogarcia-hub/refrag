@@ -5,9 +5,7 @@ This module provides the complete REfrag pipeline that integrates all components
 retrieval, compression, projection, selection, and generation.
 """
 
-import logging
 import time
-from typing import Dict, List, Optional
 
 import numpy as np
 
@@ -55,7 +53,7 @@ class REfragPipeline:
         self.config = config
         self.metrics = MetricsTracker()
 
-        logger.info("="* 60)
+        logger.info("=" * 60)
         logger.info("Initializing REfrag Pipeline")
         logger.info("=" * 60)
 
@@ -67,10 +65,7 @@ class REfragPipeline:
         # 2. Initialize compression components
         logger.info("2/6: Loading compression components...")
         self.encoder = ChunkEncoder(config)
-        self.chunker = TextChunker(
-            tokenizer=self.encoder.tokenizer,
-            chunk_size=config.chunk_size
-        )
+        self.chunker = TextChunker(tokenizer=self.encoder.tokenizer, chunk_size=config.chunk_size)
 
         # 3. Initialize LLM
         logger.info("3/6: Loading decoder LLM...")
@@ -81,14 +76,13 @@ class REfragPipeline:
         self.projector = create_projector(
             encoder_dim=self.encoder.embedding_dim,
             decoder_dim=self.llm.embedding_dim,
-            device=self.llm.device
+            device=self.llm.device,
         )
 
         # 5. Initialize selection policy
         logger.info("5/6: Setting up selection policy...")
         self.policy = create_policy(
-            strategy=config.selection_strategy,
-            expansion_fraction=config.expansion_fraction
+            strategy=config.selection_strategy, expansion_fraction=config.expansion_fraction
         )
 
         # 6. Initialize hybrid constructor
@@ -99,7 +93,7 @@ class REfragPipeline:
         logger.info("REfrag Pipeline initialized successfully!")
         logger.info("=" * 60)
 
-    def add_documents(self, documents: List[str]) -> None:
+    def add_documents(self, documents: list[str]) -> None:
         """
         Add documents to the retrieval system.
 
@@ -111,11 +105,11 @@ class REfragPipeline:
     def query(
         self,
         question: str,
-        top_k: Optional[int] = None,
+        top_k: int | None = None,
         max_new_tokens: int = 100,
         temperature: float = 0.7,
-        do_sample: bool = False
-    ) -> Dict:
+        do_sample: bool = False,
+    ) -> dict:
         """
         Process a query through the complete REfrag pipeline.
 
@@ -132,7 +126,7 @@ class REfragPipeline:
                 - metrics: Performance metrics
                 - debug: Debug information
         """
-        logger.info(f"\n{'='*60}\nProcessing query: {question[:100]}...\n{'='*60}")
+        logger.info(f"\n{'=' * 60}\nProcessing query: {question[:100]}...\n{'=' * 60}")
 
         start_time = time.time()
         self.metrics.start("total_time")
@@ -152,7 +146,7 @@ class REfragPipeline:
             return {
                 "answer": "I couldn't find any relevant information to answer your question.",
                 "metrics": {},
-                "debug": {"error": "No documents retrieved"}
+                "debug": {"error": "No documents retrieved"},
             }
 
         logger.info(f"Retrieved {len(documents)} documents")
@@ -179,7 +173,7 @@ class REfragPipeline:
             return {
                 "answer": "I couldn't process the retrieved documents.",
                 "metrics": {},
-                "debug": {"error": "No chunks created"}
+                "debug": {"error": "No chunks created"},
             }
 
         chunk_embeddings = np.concatenate(all_embeddings, axis=0)
@@ -200,7 +194,7 @@ class REfragPipeline:
             chunks=all_chunks,
             query=question,
             chunk_embeddings=chunk_embeddings,
-            query_embedding=query_embedding
+            query_embedding=query_embedding,
         )
 
         self.metrics.end("selection_time")
@@ -213,7 +207,9 @@ class REfragPipeline:
 
         # Count compressed tokens (selected chunks = full tokens, others = 1 token each)
         query_tokens = self.chunker.count_tokens(question)
-        compressed_chunk_tokens = len(all_chunks) - len(selected_indices)  # 1 token per compressed chunk
+        compressed_chunk_tokens = len(all_chunks) - len(
+            selected_indices
+        )  # 1 token per compressed chunk
         expanded_chunk_tokens = sum(
             self.chunker.count_tokens(all_chunks[i]) for i in selected_indices
         )
@@ -241,7 +237,7 @@ class REfragPipeline:
                 selected_indices=selected_indices,
                 max_new_tokens=max_new_tokens,
                 temperature=temperature,
-                do_sample=do_sample
+                do_sample=do_sample,
             )
 
             ttft = time.time() - ttft_start
@@ -254,7 +250,7 @@ class REfragPipeline:
             return {
                 "answer": f"Error during generation: {str(e)}",
                 "metrics": {},
-                "debug": {"error": str(e)}
+                "debug": {"error": str(e)},
             }
 
         total_time = time.time() - start_time
@@ -272,7 +268,7 @@ class REfragPipeline:
                 "compression_time": self.metrics.get_last("compression_time"),
                 "selection_time": self.metrics.get_last("selection_time"),
                 "generation_time": self.metrics.get_last("generation_time"),
-                "total_time": total_time
+                "total_time": total_time,
             },
             "debug": {
                 "retrieved_docs": len(documents),
@@ -280,11 +276,11 @@ class REfragPipeline:
                 "selected_chunks": len(selected_indices),
                 "query_tokens": query_tokens,
                 "expanded_chunk_tokens": expanded_chunk_tokens,
-                "compressed_chunk_tokens": compressed_chunk_tokens
-            }
+                "compressed_chunk_tokens": compressed_chunk_tokens,
+            },
         }
 
-        logger.info(f"\n{'='*60}\nQuery completed in {total_time:.2f}s\n{'='*60}\n")
+        logger.info(f"\n{'=' * 60}\nQuery completed in {total_time:.2f}s\n{'=' * 60}\n")
 
         return result
 

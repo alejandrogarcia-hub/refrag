@@ -490,4 +490,4 @@ For questions, issues, or suggestions:
 
 ---
 
-**Built with ❤️ for the AI research community**
+**⚡ Built by [@alejandrogarcia-hub](https://github.com/alejandrogarcia-hub) for the AI research community**

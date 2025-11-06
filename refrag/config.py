@@ -8,7 +8,7 @@ environment variables and provides default values for all REfrag components.
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Literal
 
 from dotenv import load_dotenv
 
@@ -45,9 +45,7 @@ class Config:
 
     # Model Configuration
     decoder_model: str = field(
-        default_factory=lambda: os.getenv(
-            "DECODER_MODEL", "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
-        )
+        default_factory=lambda: os.getenv("DECODER_MODEL", "TinyLlama/TinyLlama-1.1B-Chat-v1.0")
     )
     encoder_model: str = field(default_factory=lambda: os.getenv("ENCODER_MODEL", "roberta-base"))
     embedding_model: str = field(
@@ -62,18 +60,12 @@ class Config:
     selection_strategy: Literal["similarity", "tfidf", "position", "hybrid"] = field(
         default_factory=lambda: os.getenv("SELECTION_STRATEGY", "similarity")  # type: ignore
     )
-    top_k_documents: int = field(
-        default_factory=lambda: int(os.getenv("TOP_K_DOCUMENTS", "5"))
-    )
+    top_k_documents: int = field(default_factory=lambda: int(os.getenv("TOP_K_DOCUMENTS", "5")))
 
     # Hardware Configuration
     device: str = field(default_factory=lambda: os.getenv("DEVICE", "cuda"))
-    use_8bit: bool = field(
-        default_factory=lambda: os.getenv("USE_8BIT", "false").lower() == "true"
-    )
-    use_4bit: bool = field(
-        default_factory=lambda: os.getenv("USE_4BIT", "false").lower() == "true"
-    )
+    use_8bit: bool = field(default_factory=lambda: os.getenv("USE_8BIT", "false").lower() == "true")
+    use_4bit: bool = field(default_factory=lambda: os.getenv("USE_4BIT", "false").lower() == "true")
 
     # Vector Database Configuration
     chroma_db_path: str = field(default_factory=lambda: os.getenv("CHROMA_DB_PATH", "./chroma_db"))
@@ -88,12 +80,8 @@ class Config:
     )
 
     # API Keys (optional)
-    huggingface_token: Optional[str] = field(
-        default_factory=lambda: os.getenv("HUGGINGFACE_TOKEN")
-    )
-    anthropic_api_key: Optional[str] = field(
-        default_factory=lambda: os.getenv("ANTHROPIC_API_KEY")
-    )
+    huggingface_token: str | None = field(default_factory=lambda: os.getenv("HUGGINGFACE_TOKEN"))
+    anthropic_api_key: str | None = field(default_factory=lambda: os.getenv("ANTHROPIC_API_KEY"))
 
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -109,9 +97,7 @@ class Config:
 
         # Validate top_k_documents
         if self.top_k_documents < 1:
-            raise ValueError(
-                f"top_k_documents must be positive, got {self.top_k_documents}"
-            )
+            raise ValueError(f"top_k_documents must be positive, got {self.top_k_documents}")
 
         # Auto-detect device if set to "auto"
         if self.device == "auto":

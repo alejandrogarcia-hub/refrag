@@ -47,9 +47,7 @@ class LLMInterface:
 
         # Load tokenizer
         self.tokenizer = AutoTokenizer.from_pretrained(
-            config.decoder_model,
-            token=config.huggingface_token,
-            trust_remote_code=True
+            config.decoder_model, token=config.huggingface_token, trust_remote_code=True
         )
 
         # Set padding token if not set
@@ -60,7 +58,7 @@ class LLMInterface:
         model_kwargs = {
             "token": config.huggingface_token,
             "trust_remote_code": True,
-            "torch_dtype": torch.float16 if config.device == "cuda" else torch.float32,
+            "dtype": torch.float16 if config.device == "cuda" else torch.float32,
         }
 
         # Add quantization config if requested
@@ -71,10 +69,7 @@ class LLMInterface:
             logger.info("Using 4-bit quantization")
             model_kwargs["load_in_4bit"] = True
 
-        self.model = AutoModelForCausalLM.from_pretrained(
-            config.decoder_model,
-            **model_kwargs
-        )
+        self.model = AutoModelForCausalLM.from_pretrained(config.decoder_model, **model_kwargs)
 
         # Move to device if not quantized
         if not (config.use_8bit or config.use_4bit):
@@ -103,13 +98,13 @@ class LLMInterface:
             The embedding layer
         """
         # Different models have different attribute names
-        if hasattr(self.model, 'model'):
-            if hasattr(self.model.model, 'embed_tokens'):
+        if hasattr(self.model, "model"):
+            if hasattr(self.model.model, "embed_tokens"):
                 return self.model.model.embed_tokens
-        if hasattr(self.model, 'transformer'):
-            if hasattr(self.model.transformer, 'wte'):
+        if hasattr(self.model, "transformer"):
+            if hasattr(self.model.transformer, "wte"):
                 return self.model.transformer.wte
-            if hasattr(self.model.transformer, 'embd'):
+            if hasattr(self.model.transformer, "embd"):
                 return self.model.transformer.embd
 
         # Fallback: use get_input_embeddings
@@ -145,11 +140,7 @@ class LLMInterface:
         return self.tokenizer.decode(token_ids, skip_special_tokens=skip_special_tokens)
 
     def generate_from_text(
-        self,
-        prompt: str,
-        max_length: int = 100,
-        temperature: float = 0.7,
-        do_sample: bool = False
+        self, prompt: str, max_length: int = 100, temperature: float = 0.7, do_sample: bool = False
     ) -> str:
         """
         Generate text from a text prompt (standard generation).
@@ -171,7 +162,7 @@ class LLMInterface:
                 max_length=max_length,
                 temperature=temperature,
                 do_sample=do_sample,
-                pad_token_id=self.tokenizer.pad_token_id
+                pad_token_id=self.tokenizer.pad_token_id,
             )
 
         return self.decode_tokens(outputs[0])

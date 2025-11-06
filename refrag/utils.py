@@ -8,7 +8,7 @@ including logging setup, timing utilities, and helper functions.
 import logging
 import time
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 import torch
@@ -33,7 +33,7 @@ def setup_logging(log_level: str = "INFO") -> logging.Logger:
 
 
 @contextmanager
-def timer(name: str, logger: Optional[logging.Logger] = None):
+def timer(name: str, logger: logging.Logger | None = None):
     """
     Context manager for timing code blocks.
 
@@ -178,8 +178,8 @@ class MetricsTracker:
 
     def __init__(self):
         """Initialize metrics tracker."""
-        self.metrics: Dict[str, List[float]] = {}
-        self.start_times: Dict[str, float] = {}
+        self.metrics: dict[str, list[float]] = {}
+        self.start_times: dict[str, float] = {}
 
     def start(self, metric_name: str) -> None:
         """
@@ -262,7 +262,7 @@ class MetricsTracker:
             return 0.0
         return self.metrics[metric_name][-1]
 
-    def get_summary(self) -> Dict[str, Dict[str, float]]:
+    def get_summary(self) -> dict[str, dict[str, float]]:
         """
         Get summary statistics for all metrics.
 
@@ -288,7 +288,7 @@ class MetricsTracker:
         self.start_times.clear()
 
 
-def pretty_print_metrics(metrics: Dict[str, Any], indent: int = 0) -> None:
+def pretty_print_metrics(metrics: dict[str, Any], indent: int = 0) -> None:
     """
     Pretty print metrics dictionary.
 

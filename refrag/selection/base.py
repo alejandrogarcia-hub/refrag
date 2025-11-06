@@ -55,20 +55,63 @@ class SelectionPolicy(ABC):
         """
         pass
 
-    def _get_top_k(self, scores: np.ndarray) -> List[int]:
+    def _get_top_k(self, scores: np.ndarray, expansion_fraction: float | None = None) -> List[int]:
         """
         Get top-k indices based on scores and expansion fraction.
 
         Args:
             scores: Array of scores for each chunk
+            expansion_fraction: Optional override for expansion fraction
+                              If None, uses self.expansion_fraction
 
         Returns:
             List of top-k indices
         """
         n_chunks = len(scores)
-        k = max(1, int(n_chunks * self.expansion_fraction))
+        # Use provided fraction or default to instance fraction
+        fraction = expansion_fraction if expansion_fraction is not None else self.expansion_fraction
+        k = max(1, int(n_chunks * fraction))
 
         # Get indices of top-k scores
         top_k_indices = np.argsort(scores)[-k:][::-1]
 
         return top_k_indices.tolist()
+
+    def select_with_dynamic_fraction(
+        self,
+        chunks: List[str],
+        query: str,
+        chunk_embeddings: np.ndarray,
+        query_embedding: np.ndarray,
+        dynamic_fraction: float
+    ) -> List[int]:
+        """
+        Select chunks with a dynamically determined expansion fraction.
+
+        This method temporarily overrides the expansion fraction for adaptive
+        selection based on query complexity.
+
+        Args:
+            chunks: List of text chunks
+            query: Query text
+            chunk_embeddings: Embeddings of chunks, shape (n_chunks, dim)
+            query_embedding: Embedding of query, shape (dim,)
+            dynamic_fraction: Dynamically computed expansion fraction (0.0 to 1.0)
+
+        Returns:
+            List of indices of chunks to expand
+        """
+        # Temporarily store the original fraction
+        original_fraction = self.expansion_fraction
+
+        try:
+            # Override with dynamic fraction
+            self.expansion_fraction = dynamic_fraction
+
+            # Call the regular select method
+            result = self.select(chunks, query, chunk_embeddings, query_embedding)
+
+            return result
+        finally:
+            # Restore original fraction
+            self.expansion_fraction = original_fraction

@@ -10,6 +10,7 @@ from typing import List, Tuple
 
 import numpy as np
 import torch
+import torch.nn as nn
 
 from refrag.generation.llm_interface import LLMInterface
 from refrag.projection.projector import Projector
@@ -33,22 +34,33 @@ class HybridInputConstructor:
         llm: LLM interface with model and tokenizer
         projector: Projection layer for mapping encoder embeddings to LLM space
         embedding_layer: The LLM's token embedding layer
+        position_embedding: Position embeddings for compressed chunks to preserve document structure
     """
 
-    def __init__(self, llm: LLMInterface, projector: Projector):
+    def __init__(self, llm: LLMInterface, projector: Projector, max_position_embeddings: int = 512):
         """
         Initialize the hybrid input constructor.
 
         Args:
             llm: LLM interface
             projector: Projector for mapping encoder embeddings
+            max_position_embeddings: Maximum number of position embeddings (default: 512)
         """
         self.llm = llm
         self.projector = projector.to(llm.device)
         self.embedding_layer = llm.get_embedding_layer()
         self.device = llm.device
 
-        logger.info("HybridInputConstructor initialized")
+        # Initialize position embeddings for compressed chunks
+        # This preserves document structure and positional context
+        hidden_dim = llm.embedding_dim
+        self.position_embedding = nn.Embedding(max_position_embeddings, hidden_dim)
+        self.position_embedding = self.position_embedding.to(llm.device)
+
+        # Initialize position embeddings with small random values
+        nn.init.normal_(self.position_embedding.weight, mean=0.0, std=0.02)
+
+        logger.info("HybridInputConstructor initialized with positional encodings")
 
     def construct(
         self,
@@ -105,7 +117,7 @@ class HybridInputConstructor:
                 chunk_embeds = self.embedding_layer(chunk_ids)  # [1, chunk_len, hidden_dim]
 
             else:
-                # COMPRESS: Use single projected embedding
+                # COMPRESS: Use single projected embedding with positional encoding
                 # Get encoder embedding for this chunk
                 encoder_emb = torch.from_numpy(chunk_embeddings[i]).float().to(self.device)
 
@@ -113,8 +125,15 @@ class HybridInputConstructor:
                 with torch.no_grad():
                     projected_emb = self.projector(encoder_emb)  # [hidden_dim]
 
+                    # Add positional encoding to preserve document structure
+                    position_id = torch.tensor([i], device=self.device)
+                    position_emb = self.position_embedding(position_id)  # [1, hidden_dim]
+
+                    # Combine projected embedding with positional encoding
+                    combined_emb = projected_emb + position_emb.squeeze(0)  # [hidden_dim]
+
                 # Add batch and sequence dimensions
-                chunk_embeds = projected_emb.unsqueeze(0).unsqueeze(0)  # [1, 1, hidden_dim]
+                chunk_embeds = combined_emb.unsqueeze(0).unsqueeze(0)  # [1, 1, hidden_dim]
 
             chunk_embeds_list.append(chunk_embeds)
 

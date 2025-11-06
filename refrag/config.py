@@ -30,7 +30,9 @@ class Config:
         embedding_model: HuggingFace model ID for document embeddings
         chunk_size: Number of tokens per chunk (paper uses 16)
         expansion_fraction: Fraction of chunks to expand (0.0-1.0, paper uses 0.25)
+                           Used as default when use_dynamic_expansion is False
         selection_strategy: Strategy for selecting important chunks
+        use_dynamic_expansion: Whether to use query complexity-based dynamic expansion
         top_k_documents: Number of documents to retrieve per query
         device: Device to use for inference (cuda/mps/cpu)
         use_8bit: Whether to use 8-bit quantization
@@ -59,6 +61,9 @@ class Config:
     )
     selection_strategy: Literal["similarity", "tfidf", "position", "hybrid"] = field(
         default_factory=lambda: os.getenv("SELECTION_STRATEGY", "similarity")  # type: ignore
+    )
+    use_dynamic_expansion: bool = field(
+        default_factory=lambda: os.getenv("USE_DYNAMIC_EXPANSION", "true").lower() == "true"
     )
     top_k_documents: int = field(default_factory=lambda: int(os.getenv("TOP_K_DOCUMENTS", "5")))
 
@@ -136,6 +141,7 @@ class Config:
             "chunk_size": self.chunk_size,
             "expansion_fraction": self.expansion_fraction,
             "selection_strategy": self.selection_strategy,
+            "use_dynamic_expansion": self.use_dynamic_expansion,
             "top_k_documents": self.top_k_documents,
             "device": self.device,
             "use_8bit": self.use_8bit,

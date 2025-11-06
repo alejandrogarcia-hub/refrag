@@ -5,6 +5,7 @@ This module provides policies for selecting which chunks to expand vs compress.
 """
 
 from refrag.selection.base import SelectionPolicy
+from refrag.selection.complexity import QueryComplexityEstimator
 from refrag.selection.heuristic import (
     HybridPolicy,
     PositionPolicy,
@@ -19,5 +20,6 @@ __all__ = [
     "TFIDFPolicy",
     "PositionPolicy",
     "HybridPolicy",
+    "QueryComplexityEstimator",
     "create_policy",
 ]

@@ -14,7 +14,7 @@ from refrag.config import Config
 from refrag.generation import HybridInputConstructor, LLMInterface
 from refrag.projection import create_projector
 from refrag.retrieval import DocumentEmbedder, Retriever
-from refrag.selection import create_policy
+from refrag.selection import QueryComplexityEstimator, create_policy
 from refrag.utils import MetricsTracker, setup_logging
 
 logger = setup_logging()
@@ -27,9 +27,12 @@ class REfragPipeline:
     This pipeline implements the full REfrag algorithm:
     1. RETRIEVE: Find relevant documents from vector store
     2. COMPRESS: Split documents into chunks and encode to embeddings
-    3. SENSE/SELECT: Identify important chunks to expand
+    3. SENSE/SELECT: Identify important chunks to expand (with dynamic expansion)
     4. EXPAND: Construct hybrid input (compressed + expanded chunks)
     5. GENERATE: Generate answer from hybrid input
+
+    The pipeline uses dynamic expansion fractions based on query complexity,
+    adapting the number of chunks to expand based on query characteristics.
 
     Attributes:
         config: Configuration object
@@ -38,6 +41,7 @@ class REfragPipeline:
         encoder: Chunk encoder
         projector: Embedding projector
         policy: Selection policy
+        complexity_estimator: Query complexity estimator for dynamic expansion
         llm: LLM interface
         hybrid_constructor: Hybrid input constructor
         metrics: Metrics tracker
@@ -58,21 +62,21 @@ class REfragPipeline:
         logger.info("=" * 60)
 
         # 1. Initialize retrieval components
-        logger.info("1/6: Loading retrieval system...")
+        logger.info("1/7: Loading retrieval system...")
         self.retriever = Retriever(config)
         self.doc_embedder = DocumentEmbedder(config)
 
         # 2. Initialize compression components
-        logger.info("2/6: Loading compression components...")
+        logger.info("2/7: Loading compression components...")
         self.encoder = ChunkEncoder(config)
         self.chunker = TextChunker(tokenizer=self.encoder.tokenizer, chunk_size=config.chunk_size)
 
         # 3. Initialize LLM
-        logger.info("3/6: Loading decoder LLM...")
+        logger.info("3/7: Loading decoder LLM...")
         self.llm = LLMInterface(config)
 
         # 4. Initialize projector
-        logger.info("4/6: Initializing projector...")
+        logger.info("4/7: Initializing projector...")
         self.projector = create_projector(
             encoder_dim=self.encoder.embedding_dim,
             decoder_dim=self.llm.embedding_dim,
@@ -80,13 +84,17 @@ class REfragPipeline:
         )
 
         # 5. Initialize selection policy
-        logger.info("5/6: Setting up selection policy...")
+        logger.info("5/7: Setting up selection policy...")
         self.policy = create_policy(
             strategy=config.selection_strategy, expansion_fraction=config.expansion_fraction
         )
 
-        # 6. Initialize hybrid constructor
-        logger.info("6/6: Creating hybrid input constructor...")
+        # 6. Initialize complexity estimator for dynamic expansion
+        logger.info("6/7: Creating query complexity estimator...")
+        self.complexity_estimator = QueryComplexityEstimator()
+
+        # 7. Initialize hybrid constructor
+        logger.info("7/7: Creating hybrid input constructor...")
         self.hybrid_constructor = HybridInputConstructor(self.llm, self.projector)
 
         logger.info("=" * 60)
@@ -189,13 +197,49 @@ class REfragPipeline:
         # IMPORTANT: Use the same encoder (RoBERTa) as chunks to match dimensions
         query_embedding = self.encoder.encode_single(question)
 
-        # Select chunks
-        selected_indices = self.policy.select(
-            chunks=all_chunks,
-            query=question,
-            chunk_embeddings=chunk_embeddings,
-            query_embedding=query_embedding,
-        )
+        # Select chunks (with dynamic expansion if enabled)
+        if self.config.use_dynamic_expansion:
+            # Estimate query complexity for dynamic expansion
+            complexity_score = self.complexity_estimator.estimate_complexity(
+                query=question,
+                chunks=all_chunks,
+                chunk_embeddings=chunk_embeddings,
+                query_embedding=query_embedding
+            )
+
+            # Get dynamic expansion fraction based on complexity
+            dynamic_fraction = self.complexity_estimator.get_dynamic_expansion_fraction(
+                complexity=complexity_score,
+                min_fraction=0.1,
+                max_fraction=0.5
+            )
+
+            logger.info(
+                f"Query complexity: {complexity_score:.3f} → "
+                f"dynamic expansion fraction: {dynamic_fraction:.3f}"
+            )
+
+            # Select chunks with dynamic expansion fraction
+            selected_indices = self.policy.select_with_dynamic_fraction(
+                chunks=all_chunks,
+                query=question,
+                chunk_embeddings=chunk_embeddings,
+                query_embedding=query_embedding,
+                dynamic_fraction=dynamic_fraction
+            )
+        else:
+            # Use fixed expansion fraction from config
+            complexity_score = None
+            dynamic_fraction = self.config.expansion_fraction
+
+            logger.info(f"Using fixed expansion fraction: {dynamic_fraction:.3f}")
+
+            selected_indices = self.policy.select(
+                chunks=all_chunks,
+                query=question,
+                chunk_embeddings=chunk_embeddings,
+                query_embedding=query_embedding
+            )
 
         self.metrics.end("selection_time")
 
@@ -277,6 +321,9 @@ class REfragPipeline:
                 "query_tokens": query_tokens,
                 "expanded_chunk_tokens": expanded_chunk_tokens,
                 "compressed_chunk_tokens": compressed_chunk_tokens,
+                "complexity_score": complexity_score if self.config.use_dynamic_expansion else None,
+                "dynamic_expansion_enabled": self.config.use_dynamic_expansion,
+                "expansion_fraction": dynamic_fraction,
             },
         }
 
